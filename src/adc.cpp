@@ -2,15 +2,6 @@
 
 #include "adc.h"
 
-#define CS5381 0
-#define CS5361 1
-#define CS5366 2
-#define CS5368 3
-#define TLDV320ADC6140 44     
-#define TLDV320ADC6140_2 5   // (dual ADC)
-
-#define ADC_MODEL CS5381
-
 int gain=0;
 
 #if ADC_MODEL == CS5381

@@ -50,7 +50,7 @@ ifeq ($(BOARD_ID),T40)
 	Family		:= teensy4
 	LDFILE		:= imxrt1062.ld
 	FLAGS_CPU   += -mcpu=cortex-m7 -mfpu=fpv5-d16
-	LIBS        := larm_cortexM7lfsp_math
+	LIBS        := #-larm_cortexM7lfsp_math
 	DEFINES     := -D__IMXRT1062__ -DARDUINO_TEENSY40
 	DEFINES     += -DF_CPU=396000000
 endif
@@ -60,7 +60,7 @@ ifeq ($(BOARD_ID),T41)
 	Family		:= teensy4
 	LDFILE		:= imxrt1062_t41.ld
 	FLAGS_CPU   += -mcpu=cortex-m7 -mfpu=fpv5-d16
-	LIBS        := -larm_cortexM7lfsp_mat
+	LIBS        := #-larm_cortexM7lfsp_mat
 	DEFINES     := -D__IMXRT1062__ -DARDUINO_TEENSY41
 	DEFINES     += -DF_CPU=396000000
 endif
@@ -75,7 +75,7 @@ LIBS_LOCAL      :=
 ARDUINO		:= $(ROOT0)\arduino-1.8.19\hardware
 
 LIBS_SHARED_BASE  := $(ARDUINO)\teensy\avr\libraries
-LIBS_SHARED       := SPI Time  Audio Wire SerialFlash SD SdFat
+LIBS_SHARED       := Time Wire SPI SD SdFat
 
 CORE_BASE        := $(ARDUINO)\teensy\avr\cores\$(Family)
 GCC_BASE         := $(ARDUINO)\tools\arm\bin
