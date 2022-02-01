@@ -1,28 +1,27 @@
 #include <stdint.h>
 
 #include "adc.h"
-#include "i2c.h"
 
-#define CS5361 0
-#define CS5366 1
-#define CS5368 2
-#define TLDV320ADC6140 3     
-#define TLDV320ADC6140_2 4   // (dual ADC)
+#define CS5381 0
+#define CS5361 1
+#define CS5366 2
+#define CS5368 3
+#define TLDV320ADC6140 44     
+#define TLDV320ADC6140_2 5   // (dual ADC)
 
-#define ADC_MODEL CS5361
+#define ADC_MODEL CS5381
 
 int gain=0;
 
-#if (ADC_MODEL == TLDV320ADC6140) || (ADC_MODEL == TLDV320ADC6140_2)
-    const  uint8_t chanMask[2] = {0b1110<<4, 0b1110<<4};
-    const  uint8_t chmap[2][4]={{0,1,2,3},{0,1,2,3}};
-    int8_t again = gain ;           // 0:42
-    const  int8_t dgain = -(int8_t)gain*2;    //(-40.0f*2); // -100:0.5:27
-    const int AG[2][4]={{0,0,8,16},{0,24,32,40}};
-#endif
+#if ADC_MODEL == CS5381
+    void adc_init(void) { }
+    void setAGain(int8_t again) {  }
+    void adcStatus(void) {  }
 
-#if ADC_MODEL == CS5361 || ADC_MODEL == CS5366 || ADC_MODEL == CS5368
+#elif ADC_MODEL == CS5361 || ADC_MODEL == CS5366 || ADC_MODEL == CS5368
 /******************************* CS5366 ********************************************/
+#include "i2c.h"
+
     #define CS536X_I2C_ADDR (0x4C)
 
     #define CS536X_REVI 0x00
@@ -103,8 +102,16 @@ int gain=0;
     void setAGain(int8_t again) {  }
     void adcStatus(void) {  }
 
-#else
+#elif (ADC_MODEL == TLDV320ADC6140) || (ADC_MODEL == TLDV320ADC6140_2)
 /******************************* TLV320ADC6140 ********************************************/
+#include "i2c.h"
+
+    const  uint8_t chanMask[2] = {0b1110<<4, 0b1110<<4};
+    const  uint8_t chmap[2][4]={{0,1,2,3},{0,1,2,3}};
+    int8_t again = gain ;           // 0:42
+    const  int8_t dgain = -(int8_t)gain*2;    //(-40.0f*2); // -100:0.5:27
+    const int AG[2][4]={{0,0,8,16},{0,24,32,40}};
+
     #define I2C_ADDRESS1 0x4C // 0-0
     #define I2C_ADDRESS2 0x4D // 0-1
     static const uint8_t i2c_addr[2]= {I2C_ADDRESS1, I2C_ADDRESS2};

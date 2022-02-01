@@ -23,7 +23,7 @@ volatile uint32_t acq_miss=0;
     #define IMXRT_CACHE_ENABLED 0
 //------------------------------------- I2S -------------------------------------
 
-    //hardware specific defines
+//WMXZ hardware specific defines
 //    #if ADC_MODEL == CS5366
 //        #define CH6
 //        #define I2S_CONFIG 1 // D39, D11, D12, D13 (MCLK,RX_BCLK,RX_FS,TX_D0)
@@ -31,19 +31,6 @@ volatile uint32_t acq_miss=0;
 //        #define CH8
 ////        #define I2S_CONFIG 2 // D35,PTC8(4); D36,PTC9(4) D37,PTC10(4); D27,PTA15(6) (MCLK,RX_BCLK,RX_FS,TX_D0)
 //    #endif
-
-/*    #ifdef CH6  //standalone cVAS
-        #define IMUDEV 0
-        #define IMUV 5
-        #define A_DEPTH A22	 // A22
-        #define A_VOLT	A21	 // A21
-    #elif defined(CH8)  //nose  cVAS
-        #define IMUDEV 2
-        #define IMUV 5       // 3 (3 is pre-protp)
-        #define A_DEPTH A22	 // A22
-        #define A_VOLT	A21	 // A21
-    #endif
-*/
 
     #define MCLK_SRC  3
     // set MCLK to 48 MHz
