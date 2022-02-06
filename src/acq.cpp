@@ -5,6 +5,9 @@
 #include "adc.h"
 
 /********************************************************************************/
+#include "DMAChannel.h"
+static DMAChannel dma;
+
 static void acq_isr(void);
 
 DMAMEM static uint32_t tdm_rx_buffer[2*NBUF_I2S] __attribute__((aligned(32)));
@@ -87,6 +90,15 @@ volatile uint32_t acq_miss=0;
         acq_stopClocks();
     }
 
+    void mckl_init(int src, int mult, int div)
+    {
+        SIM_SCGC6 |= SIM_SCGC6_I2S;
+        // enable MCLK output
+        I2S0_MDR = I2S_MDR_FRACT((mult-1)) | I2S_MDR_DIVIDE((div-1));
+        while(I2S0_MCR & I2S_MCR_DUF);
+        I2S0_MCR = I2S_MCR_MICS(src) | I2S_MCR_MOE;
+
+    }
 
     void acq_init(int fsamp)
     {
@@ -112,11 +124,7 @@ volatile uint32_t acq_miss=0;
         #endif
 
         I2S0_RCSR=0;
-
-        // enable MCLK output
-        I2S0_MDR = I2S_MDR_FRACT((MCLK_MULT-1)) | I2S_MDR_DIVIDE((MCLK_DIV-1));
-        while(I2S0_MCR & I2S_MCR_DUF);
-        I2S0_MCR = I2S_MCR_MICS(MCLK_SRC) | I2S_MCR_MOE;
+        mckl_init(MCLK_SRC, MCLK_MULT, MCLK_DIV);
         
         I2S0_RMR=0; // enable receiver mask
         I2S0_RCR1 = I2S_RCR1_RFW(3); 
@@ -135,9 +143,23 @@ volatile uint32_t acq_miss=0;
         
         I2S0_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
         // DMA 
+// configuration of DMA
+        dma.TCD->SADDR = &I2S1_RDR0;
+        dma.TCD->SOFF = 0;
+        dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
+	    dma.TCD->NBYTES_MLOFFNO = 4;
+        dma.TCD->SLAST = 0;
+        dma.TCD->DADDR = tdm_rx_buffer;
+        dma.TCD->DOFF = 4;
+        dma.TCD->CITER_ELINKNO = 2*NBUF_I2S;
+        dma.TCD->DLASTSGA = -sizeof(tdm_rx_buffer);
+        dma.TCD->BITER_ELINKNO = 2*NBUF_I2S;
+        dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
+
+
 //        SIM_SCGC7 |= SIM_SCGC7_DMA;
 //        SIM_SCGC6 |= SIM_SCGC6_DMAMUX;
-
+/*
         DMA_CR = DMA_CR_EMLM | DMA_CR_EDBG;
         DMA_CR |= DMA_CR_GRP1PRI;
         
@@ -158,33 +180,32 @@ volatile uint32_t acq_miss=0;
             
         DMAMUX0_CHCFG0 = DMAMUX_DISABLE;
         DMAMUX0_CHCFG0 = DMAMUX_SOURCE_I2S0_RX | DMAMUX_ENABLE;
-
+*/
         // partial start I2S
         I2S0_RCSR |= I2S_RCSR_FR | I2S_RCSR_FRDE;
 
         //start DMA
+ /*
         _VectorsRam[IRQ_DMA_CH0 + 16] = acq_isr;
         NVIC_SET_PRIORITY(IRQ_DMA_CH0, I2S_DMA_PRIO);
         NVIC_ENABLE_IRQ(IRQ_DMA_CH0); 
         DMA_SERQ = 0;
+*/
     }
 
 #elif defined(__IMXRT1062__)
 
-//#include "DMAChannel.h"
-//static DMAChannel dma;
-
 #ifndef DMAMUX_DISABLE
-    #define DMAMUX_DISABLE			0
+    #define DMAMUX_DISABLE		0
     #define DMAMUX_TRIG			64
-    #define DMAMUX_ENABLE			128
+    #define DMAMUX_ENABLE		128
 #endif
 
     /******************************* 4-chan TDM ***********************************************/
     #define IMXRT_CACHE_ENABLED 2 // 0=disabled, 1=WT, 2= WB
 
-    PROGMEM
-    void set_audioClock(int nfact, int32_t nmult, uint32_t ndiv, bool force) // sets PLL4
+    FLASHMEM
+    void set_audioClock(int nfact, int32_t nmult, uint32_t ndiv, bool force=false) // sets PLL4
     {
         if (!force && (CCM_ANALOG_PLL_AUDIO & CCM_ANALOG_PLL_AUDIO_ENABLE)) return;
 
@@ -194,7 +215,6 @@ volatile uint32_t acq_miss=0;
 
         CCM_ANALOG_PLL_AUDIO_NUM   = nmult & CCM_ANALOG_PLL_AUDIO_NUM_MASK;
         CCM_ANALOG_PLL_AUDIO_DENOM = ndiv & CCM_ANALOG_PLL_AUDIO_DENOM_MASK;
-        
         CCM_ANALOG_PLL_AUDIO &= ~CCM_ANALOG_PLL_AUDIO_POWERDOWN;//Switch on PLL
         while (!(CCM_ANALOG_PLL_AUDIO & CCM_ANALOG_PLL_AUDIO_LOCK)) {}; //Wait for pll-lock
         
@@ -207,7 +227,7 @@ volatile uint32_t acq_miss=0;
         Serial.printf("PLL %f\r\n",24.0f*((float)nfact+(float)nmult/(float)ndiv));
     }
 
-    void acq_init(int fsamp)
+    void mckl_init(int fsamp)
     {
         CCM_CCGR5 |= CCM_CCGR5_SAI1(CCM_CCGR_ON);
 
@@ -235,7 +255,7 @@ volatile uint32_t acq_miss=0;
         int c0 = C;
         int c2 = 10'000;
         int c1 =  C * c2 - (c0 * c2);
-        set_audioClock(c0, c1, c2, true);
+        set_audioClock(c0, c1, c2);
 
         // clear SAI1_CLK register locations
         CCM_CSCMR1 = (CCM_CSCMR1 & ~(CCM_CSCMR1_SAI1_CLK_SEL_MASK))
@@ -247,146 +267,126 @@ volatile uint32_t acq_miss=0;
 
         IOMUXC_GPR_GPR1 = (IOMUXC_GPR_GPR1 & ~(IOMUXC_GPR_GPR1_SAI1_MCLK1_SEL_MASK))
                 | (IOMUXC_GPR_GPR1_SAI1_MCLK_DIR | IOMUXC_GPR_GPR1_SAI1_MCLK1_SEL(0));	//Select MCLK
+    }
 
-#if I2S_CONFIG==2
+    void acq_init(int fsamp)
+    {
+        mckl_init(fsamp);
+
+        // configuration of I2S
         I2S1_RMR = 0;
         I2S1_RCR1 = I2S_RCR1_RFW(4);
         I2S1_RCR2 = I2S_RCR2_SYNC(0) | I2S_TCR2_BCP | I2S_RCR2_MSEL(1)
-            | I2S_RCR2_BCD | I2S_RCR2_DIV(0);
+                    | I2S_RCR2_BCD | I2S_RCR2_DIV(0);
 
-        I2S1_RCR3 = I2S_RCR3_RCE;
 
-        I2S1_RCR4 = I2S_RCR4_FRSZ((NCHAN_I2S-1)) | I2S_RCR4_SYWD(0) | I2S_RCR4_MF
-            | I2S_RCR4_FSE | I2S_RCR4_FSD;
+        I2S1_RCR4 = I2S_RCR4_FRSZ((NCHAN_I2S-1)) | I2S_RCR4_MF
+                   | I2S_RCR4_FSE | I2S_RCR4_FSD;
         I2S1_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
 
-    //	CORE_PIN23_CONFIG = 3;  //1:MCLK // connected to GPIO0 not used
+        #if ADC_STEREO
+            I2S1_RCR4 |=  I2S_RCR4_SYWD(31);
+        #endif
+
+#if I2S_CONFIG==0
+    	CORE_PIN23_CONFIG = 3;  //1:MCLK 
         CORE_PIN21_CONFIG = 3;  //1:RX_BCLK
         CORE_PIN20_CONFIG = 3;  //1:RX_SYNC
+#endif
 
-		CORE_PIN8_CONFIG = 3;   //RX_DATA0
+        // configuration of DMA
+        dma.TCD->SADDR = &I2S1_RDR0;
+        dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
+
+#if NPORT_I2S==1
+        I2S1_RCR3 = I2S_RCR3_RCE; // single data port
+
+		CORE_PIN8_CONFIG  = 3;  //1:RX_DATA0
 		IOMUXC_SAI1_RX_DATA0_SELECT_INPUT = 2; // GPIO_B1_00_ALT3, pg 873
 
-        DMA_TCD0_SADDR = &I2S1_RDR0;
-        DMA_TCD0_SOFF = 0;
-        DMA_TCD0_ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
-	    DMA_TCD0_NBYTES_MLOFFNO = 4;
-        DMA_TCD0_SLAST = 0;
-        DMA_TCD0_DADDR = tdm_rx_buffer;
-        DMA_TCD0_DOFF = 4;
-        DMA_TCD0_CITER_ELINKNO = NBUF_I2S;
-        DMA_TCD0_DLASTSGA = -sizeof(tdm_rx_buffer);
-        DMA_TCD0_BITER_ELINKNO = NBUF_I2S;
-        DMA_TCD0_CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
-#elif I2S_CONFIG==3
-        I2S1_RMR = 0;
-        I2S1_RCR1 = I2S_RCR1_RFW(4);
-        I2S1_RCR2 = I2S_RCR2_SYNC(0)
-            //| I2S_TCR2_BCP 
-            | I2S_RCR2_MSEL(1)
-            | I2S_RCR2_BCD | I2S_RCR2_DIV(0);
+        dma.TCD->SOFF = 0;
+	    dma.TCD->NBYTES_MLOFFNO = 4;
+        dma.TCD->SLAST = 0;
 
-        I2S1_RCR3 = I2S_RCR3_RCE_2CH;
-
-        I2S1_RCR4 = I2S_RCR4_FRSZ((NCHAN_I2S-1)) | I2S_RCR4_SYWD(0) | I2S_RCR4_MF
-            | I2S_RCR4_FSE | I2S_RCR4_FSD;
-        I2S1_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
-
-    	CORE_PIN23_CONFIG = 3;  //1:MCLK // connected to GPIO0 not used
-        CORE_PIN21_CONFIG = 3;  //1:RX_BCLK
-        CORE_PIN20_CONFIG = 3;  //1:RX_SYNC
-
+#elif NPORT_I2S==2
+        I2S1_RCR3 = I2S_RCR3_RCE_2CH; // dual data port
+        //
 		CORE_PIN8_CONFIG = 3;   //RX_DATA0
 		CORE_PIN6_CONFIG = 3;   //RX_DATA1
 		IOMUXC_SAI1_RX_DATA0_SELECT_INPUT = 2; // GPIO_B1_00_ALT3, pg 873
 		IOMUXC_SAI1_RX_DATA1_SELECT_INPUT = 1; // GPIO_B0_10_ALT3, pg 873
 
-        DMA_TCD0_SADDR = &I2S1_RDR0;
-        DMA_TCD0_SOFF = 4;
-        DMA_TCD0_ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
-	    DMA_TCD0_NBYTES_MLOFFYES = DMA_TCD_NBYTES_SMLOE |
-            DMA_TCD_NBYTES_MLOFFYES_MLOFF(-8) |
-            DMA_TCD_NBYTES_MLOFFYES_NBYTES(8);
-        DMA_TCD0_SLAST = -8;
-        DMA_TCD0_DADDR = tdm_rx_buffer;
-        DMA_TCD0_DOFF = 4;
-        DMA_TCD0_CITER_ELINKNO = NBUF_I2S;
-        DMA_TCD0_DLASTSGA = -sizeof(tdm_rx_buffer);
-        DMA_TCD0_BITER_ELINKNO = NBUF_I2S;
-        DMA_TCD0_CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
+        // configuration of DMA
+        dma.TCD->SOFF = 4;
+	    dma.TCD->NBYTES_MLOFFYES = DMA_TCD_NBYTES_SMLOE |
+                                   DMA_TCD_NBYTES_MLOFFYES_MLOFF(-8) |
+                                   DMA_TCD_NBYTES_MLOFFYES_NBYTES(8);
+        dma.TCD->SLAST = -8;
 #endif
-        //dma.triggerAtHardwareEvent(DMAMUX_SOURCE_SAI1_RX);
-        //NVIC_SET_PRIORITY(DMAMUX_SOURCE_SAI1_RX,I2S_SAI_PRIO);
-
-        //dma.enable();
-        //DMA_SERQ = dma.channel;
-
-        //I2S1_RCSR =  I2S_RCSR_FRDE | I2S_RCSR_FR;
-        //dma.attachInterrupt(acq_isr, I2S_DMA_PRIO);	
-
-        DMAMUX_CHCFG0 = DMAMUX_DISABLE;
-        DMAMUX_CHCFG0 = DMAMUX_SOURCE_SAI1_RX | DMAMUX_ENABLE;
-
-        // partial start I2S
-        I2S1_RCSR |= I2S_RCSR_FR | I2S_RCSR_FRDE;
-
-        //start DMA
-        _VectorsRam[IRQ_DMA_CH0 + 16] = acq_isr;
-        NVIC_SET_PRIORITY(IRQ_DMA_CH0, I2S_DMA_PRIO);
-        NVIC_ENABLE_IRQ(IRQ_DMA_CH0); 
-        DMA_SERQ = 0;
-
+        dma.TCD->DADDR = tdm_rx_buffer;
+        dma.TCD->DOFF = 4;
+        dma.TCD->CITER_ELINKNO = 2*NBUF_I2S/NPORT_I2S;
+        dma.TCD->DLASTSGA = -sizeof(tdm_rx_buffer);
+        dma.TCD->BITER_ELINKNO = 2*NBUF_I2S/NPORT_I2S;
+        dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
+        //
+        dma.triggerAtHardwareEvent(DMAMUX_SOURCE_SAI1_RX);
+        NVIC_SET_PRIORITY(DMAMUX_SOURCE_SAI1_RX,I2S_SAI_PRIO);
+        //
+        I2S1_RCSR =  I2S_RCSR_FRDE | I2S_RCSR_FR;
+        dma.attachInterrupt(acq_isr, I2S_DMA_PRIO);	
+        //
+        dma.enable();        
     }
 
     void acq_start(void)
     {
-        //DMA_SERQ = dma.channel;
         I2S1_RCSR |= (I2S_RCSR_RE | I2S_RCSR_BCE);
     }
 
     void acq_stop(void)
     {
         I2S1_RCSR &= ~(I2S_RCSR_RE | I2S_RCSR_BCE);
-        //DMA_CERQ = dma.channel;     
     }
 #endif
 
 
-    const int adc_shift=8;
-    #if ADC_STEREO // have stereo I2S
-        void extract(void *out, void *inp)
-        {   int32_t *dout = (int32_t *) out;
-            int32_t *din  = (int32_t *) inp;
-            for(int ii=0; ii < NSAMP; ii++)
-            {   dout[0+ii*NCHAN_ACQ] = din[0+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
-                dout[1+ii*NCHAN_ACQ] = din[1+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
-            }
+const int adc_shift=8;
+#if ADC_STEREO // have stereo I2S
+    void extract(void *out, void *inp)
+    {   
+        int32_t *dout = (int32_t *) out;
+        int32_t *din  = (int32_t *) inp;
+        for(int ii=0; ii < NSAMP; ii++)
+        {   dout[0+ii*NCHAN_ACQ] = din[0+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
+            dout[1+ii*NCHAN_ACQ] = din[1+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
         }
-    #else // have TMA 8 channels
-        void extract(void *out, void *inp)
-        {   int32_t *dout = (int32_t *) out;
-            int32_t *din  = (int32_t *) inp;
-            for(int ii=0; ii < NSAMP; ii++)
-            {   dout[0+ii*NCHAN_ACQ] = din[0+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
-                dout[1+ii*NCHAN_ACQ] = din[2+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
-                dout[2+ii*NCHAN_ACQ] = din[4+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
-                dout[3+ii*NCHAN_ACQ] = din[1+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
-                dout[4+ii*NCHAN_ACQ] = din[3+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
-                dout[5+ii*NCHAN_ACQ] = din[5+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
-            }
+    }
+#else // have TMA 8 channels
+    void extract(void *out, void *inp)
+    {   int32_t *dout = (int32_t *) out;
+        int32_t *din  = (int32_t *) inp;
+        for(int ii=0; ii < NSAMP; ii++)
+        {   dout[0+ii*NCHAN_ACQ] = din[0+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
+            dout[1+ii*NCHAN_ACQ] = din[2+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
+            dout[2+ii*NCHAN_ACQ] = din[4+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
+            dout[3+ii*NCHAN_ACQ] = din[1+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
+            dout[4+ii*NCHAN_ACQ] = din[3+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
+            dout[5+ii*NCHAN_ACQ] = din[5+ii*NPORT_I2S*NCHAN_I2S]>>adc_shift;
         }
-    #endif
+    }
+#endif
 
     void acq_isr(void)
     {
         uint32_t daddr;
         uint32_t *src;
 
-        DMA_CINT = 0;
-        daddr = (uint32_t) DMA_TCD0_DADDR;
+        dma.clearInterrupt();
         asm volatile("dsb");
+        daddr = (uint32_t) dma.destinationAddress();
 
-        if (daddr < ((uint32_t)tdm_rx_buffer + sizeof(tdm_rx_buffer) / 2)) {
+        if (daddr < (uint32_t) &tdm_rx_buffer[NBUF_I2S]) {
             // DMA is receiving to the first half of the buffer
             // need to remove data from the second half
             src = &tdm_rx_buffer[NBUF_I2S];
@@ -401,7 +401,6 @@ volatile uint32_t acq_miss=0;
         #endif
 
         extract((void *) acq_rx_buffer, (void *) src);
-
         if(!pushData(acq_rx_buffer)) acq_miss++;
         acq_count++;
     }

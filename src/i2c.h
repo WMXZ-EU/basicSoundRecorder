@@ -45,7 +45,7 @@ class i2c_class
         val = wire->read();
         return val;
     }
-    
+
     uint8_t write(uint8_t addr, uint8_t reg) 
     { 
         wire->beginTransmission(addr);
@@ -57,6 +57,29 @@ class i2c_class
     { 
         wire->beginTransmission(addr);
         wire->write(reg);
+        wire->write(val);
+        return (wire->endTransmission() == 0) ;
+    }
+
+    uint16_t read16(uint8_t addr, uint16_t reg) 
+    { 
+        unsigned int val;
+        wire->beginTransmission(addr);
+        wire->write(reg >> 8);
+        wire->write(reg);
+        if (wire->endTransmission(false) != 0) return 0;
+        if (wire->requestFrom((int)addr, 1) < 1) return 0;
+        val = wire->read()<<8;
+        val |= wire->read();
+        return val;
+    }
+    
+    uint8_t write16(uint8_t addr, uint16_t reg, uint16_t val) 
+    { 
+        wire->beginTransmission(addr);
+        wire->write(reg >> 8);
+        wire->write(reg);
+        wire->write(val >> 8);
         wire->write(val);
         return (wire->endTransmission() == 0) ;
     }

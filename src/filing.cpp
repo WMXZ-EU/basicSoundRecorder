@@ -198,8 +198,11 @@ void sdCsWrite(SdCsPin_t pin, bool level) { digitalWriteFast(pin, level); }
     #define SD_SCK  13
 #endif
 
-    const char *sd_str[]={"sdio",   "sd1","sd2","sd3","sd4","sd5","sd6"};
-    const int cs[] = {BUILTIN_SDCARD,  34,   33,   35,   36,   37,  38 };
+//    const char *sd_str[]={"sdio",   "sd1","sd2","sd3","sd4","sd5","sd6"};
+//    const int cs[] = {BUILTIN_SDCARD,  34,   33,   35,   36,   37,  38 };
+
+    const char *sd_str[]={"sd1"};
+    const int cs[] = {10 };
 
     const int nsd = sizeof(cs)/sizeof(int);
 

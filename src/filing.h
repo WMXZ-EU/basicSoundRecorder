@@ -20,10 +20,10 @@
     #define NCHAN_ACQ 2                           // aduisition channel number
     #define NBUF_ACQ (NCHAN_ACQ*NSAMP)
 
-    #define NDBL (2)
+    #define NDBL (4)
     #define MAX_DISK_BUFFER (NDBL*NBUF_ACQ)
 
-    #define MAXBUF 10
+    #define MAXBUF (200)
     #define MIN_SPACE (5*60*MAX_DISK_BUFFER) 
 
     #define DirPrefix  "D"
@@ -33,9 +33,11 @@
      * @brief Constants
      * 
      */
-    #if defined(__MK66FX1M0__)
+    #if defined(ARDUINO_TEENSY36)
         const int teensy=36;
-    #elif defined(__IMXRT1062__)
+    #elif defined(ARDUINO_TEENSY40)
+        const int teensy=40;
+    #elif defined(ARDUINO_TEENSY41)
         const int teensy=41;
     #endif
 
@@ -83,14 +85,14 @@
 
     enum STATUS
     {
+        MUST_REBOOT=-2,
+        //
         STOPPED=-1,
         CLOSED=0,
         OPENED=1,
         RUNNING=2,
         DOCLOSE=3,
-        MUSTSTOP=4,
-        //
-        MUST_REBOOT=-2
+        MUSTSTOP=4
     };
 
     extern int t_acq;

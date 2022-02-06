@@ -1,7 +1,6 @@
 #include "utils.h"
 #include "core_pins.h"
 
-uint32_t getTeensySerial(void);
 uint32_t SerNum;
 
 /* following from https://github.com/sstaub/TeensyID/blob/master/TeensyID.cpp */
