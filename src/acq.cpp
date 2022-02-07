@@ -81,7 +81,6 @@ volatile uint32_t acq_miss=0;
     void acq_start(void)
     {
         acq_startClocks();
-        //DMA_SERQ = dma.channel;
         I2S0_RCSR |= (I2S_RCSR_RE | I2S_RCSR_BCE);
     }
 
