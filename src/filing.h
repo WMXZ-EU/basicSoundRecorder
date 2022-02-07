@@ -1,26 +1,19 @@
 #ifndef FILING_H
 #define FILING_H
 
+
     #include <stdint.h>
     #include "SD.h"
     #include "SdFat.h"
     #include "SPI.h"
 
+    #include "config.h"
+
     /**
      * @brief Definitions
      * 
      */
-    #define FSAMP 96000
-    #define NSAMP 128
 
-    #define NPORT_I2S 1
-    #define NCHAN_I2S 2
-    #define NBUF_I2S (NPORT_I2S*NCHAN_I2S*NSAMP)  // I2S channel number
-
-    #define NCHAN_ACQ 2                           // aduisition channel number
-    #define NBUF_ACQ (NCHAN_ACQ*NSAMP)
-
-    #define NDBL (4)
     #define MAX_DISK_BUFFER (NDBL*NBUF_ACQ)
 
     #if defined(ARDUINO_TEENSY36)

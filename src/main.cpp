@@ -3,6 +3,7 @@
 */
 #define START_MODE 0 // -1 wait for menu; 0 start with closed files
 
+#include "config.h"
 #include "menu.h"
 #include "adc.h"
 #include "acq.h"

@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+#include "config.h"
 #include "filing.h"
 #include "acq.h"
 #include "adc.h"
