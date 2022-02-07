@@ -24,10 +24,6 @@
         #define MAXBUF (200)
     #endif
     
-    #define MIN_SPACE (5*60*MAX_DISK_BUFFER) 
-
-    #define DirPrefix  "D"
-    #define FilePrefix "F"
 
     /**
      * @brief Constants
