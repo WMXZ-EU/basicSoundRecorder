@@ -38,7 +38,8 @@ volatile uint32_t acq_miss=0;
 
     #define MCLK_SRC  3
     // set MCLK to 48 MHz
-    #define BCLK_DIV 3
+    #define BCLK_DIV 3 //((48MHz/93.75kHz)/(2*64)-1) // 64 = 2*32 bit 
+
     #define MCKL_SCALE 1
     // SCALE 1: 48000/512 kHz = 93.75 kHz
     #if (F_PLL == 96000000) //PLL is 96 MHz for F_CPU==48 or F_CPU==96 MHz
@@ -62,7 +63,6 @@ volatile uint32_t acq_miss=0;
     #endif
 
     const int32_t fsamp0=(((F_PLL*MCLK_MULT)/MCLK_DIV)/512);
-
     
     void acq_stopClocks(void)
     {
