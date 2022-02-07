@@ -17,6 +17,22 @@
     ]
   },
   "configurations": [
+    { "name": "Teensy 32",
+      "includePath": [
+        "${COMMON_LIBS}",
+        "${ROOT}/cores/teensy3/**"
+      ],
+      "forcedInclude": [],
+      "defines": [
+        "__MK20DX256__",
+        "ARDUINO_TEENSY32",
+        "F_CPU=48000000",
+        "${COMMON_DEFINES}"
+      ],
+      "compilerPath": "${ROOT}/../../tools/arm/bin/arm-none-eabi-gcc.exe",
+      "intelliSenseMode": "gcc-arm",
+      "cppStandard": "gnu++14"    
+    },
     { "name": "Teensy 36",
       "includePath": [
         "${COMMON_LIBS}",

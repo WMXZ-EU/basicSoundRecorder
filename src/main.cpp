@@ -24,8 +24,7 @@ uint32_t t_start;
 /* check if we should close file */
 int16_t checkToCloseFile(int16_t status, uint32_t t_acq)
 { if((status == OPENED) || (status == RUNNING))
-  {
-    //
+  { //
     static uint32_t to =0;
     uint32_t tx=rtc_get();
     tx %= t_acq;
@@ -38,19 +37,19 @@ int16_t checkToCloseFile(int16_t status, uint32_t t_acq)
 void setup()
 {
   while(!Serial) continue;
-
   Serial.println("basic Sound Recorder Version: " __DATE__  " " __TIME__ );
   SerNum = getTeensySerial();
   Serial.println((int32_t)SerNum,HEX);
 
   storage_configure();
 
-
   adc_init();
   acq_init(FSAMP);
   adc_enable(0);
 
-  acq_start(); 
+  #if START_MODE==CLOSED
+    acq_start(); 
+  #endif
 
   Serial.println("End of Setup");
 }
@@ -69,13 +68,13 @@ void loop()
   }  
   
   if(ch<0 && status>=CLOSED)  // was running, should stop now
-  { status=MUSTSTOP;  acq_stop();  
+  { 
+    status=MUSTSTOP;  acq_stop();  
   } 
 
   if(status > CLOSED) // RUNNING
   {
     status = checkToCloseFile(status, (uint32_t) t_acq); // check if we reached file size or aquisition time
-    //
   }
 
   if(status >= CLOSED) // NOT STOPPED

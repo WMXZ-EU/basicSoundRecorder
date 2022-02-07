@@ -22,7 +22,7 @@ volatile uint32_t acq_miss=0;
   #define I2S_DMA_PRIO 5*16
 #endif
 
-#if defined(__MK66FX1M0__)
+#if defined(ARDUINO_TEENSY32) || defined(ARDUINO_TEENSY36)
 
     #define IMXRT_CACHE_ENABLED 0
 //------------------------------------- I2S -------------------------------------
@@ -30,7 +30,7 @@ volatile uint32_t acq_miss=0;
 //WMXZ hardware specific defines
 //    #if ADC_MODEL == CS5366
 //        #define CH6
-//        #define I2S_CONFIG 1 // D39, D11, D12, D13 (MCLK,RX_BCLK,RX_FS,TX_D0)
+//        #define I2S_CONFIG 1 // D39, D11, D12, D13 (MCLK,RX_BCLK,RX_FS,RX_D0)
 //    #else
 //        #define CH8
 ////        #define I2S_CONFIG 2 // D35,PTC8(4); D36,PTC9(4) D37,PTC10(4); D27,PTA15(6) (MCLK,RX_BCLK,RX_FS,TX_D0)
@@ -38,6 +38,7 @@ volatile uint32_t acq_miss=0;
 
     #define MCLK_SRC  3
     // set MCLK to 48 MHz
+    #define BCLK_DIV 3
     #define MCKL_SCALE 1
     // SCALE 1: 48000/512 kHz = 93.75 kHz
     #if (F_PLL == 96000000) //PLL is 96 MHz for F_CPU==48 or F_CPU==96 MHz
@@ -103,14 +104,14 @@ volatile uint32_t acq_miss=0;
     void acq_init(int fsamp)
     {
         Serial.printf("%d %d\n",fsamp,fsamp0);
-//        SIM_SCGC6 |= SIM_SCGC6_I2S;
+
         acq_startClocks();
 
         #if I2S_CONFIG==0
-            CORE_PIN39_CONFIG = PORT_PCR_MUX(6);  //pin39, PTA17, I2S0_MCLK
-            CORE_PIN11_CONFIG = PORT_PCR_MUX(4);  //pin11, PTC6,  I2S0_RX_BCLK
-            CORE_PIN12_CONFIG = PORT_PCR_MUX(4);  //pin12, PTC7,  I2S0_RX_FS
-            CORE_PIN13_CONFIG = PORT_PCR_MUX(4);  //pin13, PTC5,  I2S0_RXD0
+            CORE_PIN11_CONFIG = PORT_PCR_MUX(6); // pin 11, PTC6, I2S0_MCLK
+        	CORE_PIN9_CONFIG  = PORT_PCR_MUX(6); // pin  9, PTC3, I2S0_TX_BCLK
+            CORE_PIN23_CONFIG = PORT_PCR_MUX(6); // pin 23, PTC2, I2S0_TX_FS (LRCLK)
+            CORE_PIN13_CONFIG = PORT_PCR_MUX(4);  //pin 13, PTC5,  I2S0_RXD0
         #elif I2S_CONFIG==1
             CORE_PIN39_CONFIG = PORT_PCR_MUX(6);  //pin39, PTA17, I2S0_MCLK
             CORE_PIN11_CONFIG = PORT_PCR_MUX(4);  //pin11, PTC6,  I2S0_RX_BCLK
@@ -122,10 +123,11 @@ volatile uint32_t acq_miss=0;
             CORE_PIN37_CONFIG = PORT_PCR_MUX(4);  //pin37, PTC10,  I2S0_RX_FS
             CORE_PIN27_CONFIG = PORT_PCR_MUX(6);  //pin27, PTA15,  I2S0_RXD0
         #endif
-
         I2S0_RCSR=0;
+
         mckl_init(MCLK_SRC, MCLK_MULT, MCLK_DIV);
         
+#if 0
         I2S0_RMR=0; // enable receiver mask
         I2S0_RCR1 = I2S_RCR1_RFW(3); 
 
@@ -142,9 +144,33 @@ volatile uint32_t acq_miss=0;
         #endif
         
         I2S0_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
-        // DMA 
+#else
+	// configure transmitter
+	I2S0_TMR = 0;
+	I2S0_TCR1 = I2S_TCR1_TFW(1);  // watermark at half fifo size
+	I2S0_TCR2 = I2S_TCR2_SYNC(0) | I2S_TCR2_BCP | I2S_TCR2_MSEL(1)
+		| I2S_TCR2_BCD | I2S_TCR2_DIV(BCLK_DIV);
+	I2S0_TCR3 = I2S_TCR3_TCE;
+	I2S0_TCR4 = I2S_TCR4_FRSZ(1) | I2S_TCR4_SYWD(31) | I2S_TCR4_MF
+		| I2S_TCR4_FSE | I2S_TCR4_FSP | I2S_TCR4_FSD;
+	I2S0_TCR5 = I2S_TCR5_WNW(31) | I2S_TCR5_W0W(31) | I2S_TCR5_FBT(31);
+
+	// configure receiver (sync'd to transmitter clocks)
+	I2S0_RMR = 0;
+	I2S0_RCR1 = I2S_RCR1_RFW(1);
+	I2S0_RCR2 = I2S_RCR2_SYNC(1) | I2S_TCR2_BCP | I2S_RCR2_MSEL(1)
+		| I2S_RCR2_BCD | I2S_RCR2_DIV(BCLK_DIV);
+	I2S0_RCR3 = I2S_RCR3_RCE;
+	I2S0_RCR4 = I2S_RCR4_FRSZ(1) | I2S_RCR4_SYWD(31) | I2S_RCR4_MF
+		| I2S_RCR4_FSE | I2S_RCR4_FSP | I2S_RCR4_FSD;
+	I2S0_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
+
+	I2S0_TCSR = I2S_TCSR_SR;
+	I2S0_TCSR = I2S_TCSR_TE | I2S_TCSR_BCE | I2S_TCSR_FRDE;
+
+#endif
 // configuration of DMA
-        dma.TCD->SADDR = &I2S1_RDR0;
+        dma.TCD->SADDR = &I2S0_RDR0;
         dma.TCD->SOFF = 0;
         dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
 	    dma.TCD->NBYTES_MLOFFNO = 4;
@@ -155,45 +181,17 @@ volatile uint32_t acq_miss=0;
         dma.TCD->DLASTSGA = -sizeof(tdm_rx_buffer);
         dma.TCD->BITER_ELINKNO = 2*NBUF_I2S;
         dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
-
-
-//        SIM_SCGC7 |= SIM_SCGC7_DMA;
-//        SIM_SCGC6 |= SIM_SCGC6_DMAMUX;
-/*
-        DMA_CR = DMA_CR_EMLM | DMA_CR_EDBG;
-        DMA_CR |= DMA_CR_GRP1PRI;
-        
-        DMA_TCD0_SADDR = &I2S0_RDR0;
-        DMA_TCD0_SOFF  = 0;
-        DMA_TCD0_SLAST = 0;
-        
-        DMA_TCD0_ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
-        DMA_TCD0_NBYTES_MLNO = 4;
-            
-        DMA_TCD0_DADDR = tdm_rx_buffer;
-        DMA_TCD0_DOFF = 4;
-        DMA_TCD0_DLASTSGA = -sizeof(tdm_rx_buffer); // Bytes
-            
-        DMA_TCD0_CITER_ELINKNO = DMA_TCD0_BITER_ELINKNO = sizeof(tdm_rx_buffer)/4;
-            
-        DMA_TCD0_CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
-            
-        DMAMUX0_CHCFG0 = DMAMUX_DISABLE;
-        DMAMUX0_CHCFG0 = DMAMUX_SOURCE_I2S0_RX | DMAMUX_ENABLE;
-*/
-        // partial start I2S
-        I2S0_RCSR |= I2S_RCSR_FR | I2S_RCSR_FRDE;
-
-        //start DMA
- /*
-        _VectorsRam[IRQ_DMA_CH0 + 16] = acq_isr;
-        NVIC_SET_PRIORITY(IRQ_DMA_CH0, I2S_DMA_PRIO);
-        NVIC_ENABLE_IRQ(IRQ_DMA_CH0); 
-        DMA_SERQ = 0;
-*/
+        //
+        dma.triggerAtHardwareEvent(DMAMUX_SOURCE_I2S0_RX);
+        NVIC_SET_PRIORITY(DMAMUX_SOURCE_I2S0_RX,I2S_SAI_PRIO);
+        //
+        I2S0_RCSR =  I2S_RCSR_FRDE | I2S_RCSR_FR;
+        dma.attachInterrupt(acq_isr, I2S_DMA_PRIO);	
+        //
+        dma.enable();        
     }
 
-#elif defined(__IMXRT1062__)
+#elif defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41)
 
 #ifndef DMAMUX_DISABLE
     #define DMAMUX_DISABLE		0

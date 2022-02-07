@@ -10,7 +10,7 @@
      * @brief Definitions
      * 
      */
-    #define FSAMP 48000
+    #define FSAMP 96000
     #define NSAMP 128
 
     #define NPORT_I2S 1
@@ -23,7 +23,14 @@
     #define NDBL (4)
     #define MAX_DISK_BUFFER (NDBL*NBUF_ACQ)
 
-    #define MAXBUF (200)
+    #if defined(ARDUINO_TEENSY36)
+        #define MAXBUF (150)
+    #elif defined(ARDUINO_TEENSY40)
+        #define MAXBUF (200)
+    #elif defined(ARDUINO_TEENSY41)
+        #define MAXBUF (200)
+    #endif
+    
     #define MIN_SPACE (5*60*MAX_DISK_BUFFER) 
 
     #define DirPrefix  "D"

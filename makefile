@@ -35,6 +35,16 @@ USB_DEVICE		:= USB_SERIAL
 
 FLAGS_CPU		:= -mthumb -mfloat-abi=hard -fsingle-precision-constant
 
+ifeq ($(BOARD_ID),T32)
+	MCU			:= mk20dx256
+	Family 		:= teensy3
+	LDFILE		:= m20dx256.ld
+	FLAGS_CPU   += -mcpu=cortex-m4  -mfpu=fpv4-sp-d16 
+	LIBS        := -larm_cortexM4lf_math
+	DEFINES     := -D__MK20DX256__ -DARDUINO_TEENSY36
+	DEFINES     += -DF_CPU=48000000
+endif
+
 ifeq ($(BOARD_ID),T36)
 	MCU			:= mk66fx1m0
 	Family 		:= teensy3

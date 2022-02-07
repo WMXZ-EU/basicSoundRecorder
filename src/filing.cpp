@@ -197,6 +197,11 @@ void sdCsWrite(SdCsPin_t pin, bool level) { digitalWriteFast(pin, level); }
     #define SD_MISO 12
     #define SD_SCK  13
 #endif
+#if defined(ARDUINO_TEENSY36)
+    #define SD_MOSI 7
+    #define SD_MISO 12
+    #define SD_SCK  14
+#endif
 
 //    const char *sd_str[]={"sdio",   "sd1","sd2","sd3","sd4","sd5","sd6"};
 //    const int cs[] = {BUILTIN_SDCARD,  34,   33,   35,   36,   37,  38 };
