@@ -1,7 +1,7 @@
 /**
  * basicSoundRecorder
 */
-#define START_MODE 0 // -1 wait for menu; 0 start with closed files
+#define START_MODE -1 // -1 wait for menu; 0 start with closed files
 
 #include "config.h"
 #include "menu.h"
@@ -15,14 +15,14 @@
 /********************************* *********************************/
 // Function prototypes and variables
 
-int t_acq = 60;
-
 uint32_t max_write=0;
 uint32_t max_count=0;
 
 uint32_t t_start;
 
 /* check if we should close file */
+int t_acq = 60; // close file on the minute
+
 int16_t checkToCloseFile(int16_t status, uint32_t t_acq)
 { if((status == OPENED) || (status == RUNNING))
   { //
@@ -45,8 +45,8 @@ void setup()
   storage_configure();
 
   adc_init();
-  acq_init(FSAMP);
-  adc_enable(0);
+  acq_init(fsamp);
+  adc_enable();
 
   #if START_MODE==CLOSED
     acq_start(); 
@@ -90,21 +90,25 @@ void loop()
   }
 
   static uint32_t t0;
+  static uint32_t loop_count=0;
   if(millis()-t0>1000)
   {
     if(status>=CLOSED)
     {
       Serial.print("\nLoop: ");
-        Serial.print(status); Serial.print(" : "); 
-        Serial.print(acq_count); Serial.print(" ");
-        Serial.print(acq_miss); Serial.print(" ");
-        Serial.print(max_count); Serial.print(" ");
+        Serial.print(status);     Serial.print(" "); 
+        Serial.print(loop_count); Serial.print(" : "); 
+        Serial.print(acq_count);  Serial.print(" ");
+        Serial.print(acq_miss);   Serial.print(" ");
+        Serial.print(max_count);  Serial.print(" ");
         Serial.print(max_write);
     }
+    loop_count=0;
     acq_count=0;
     acq_miss=0;
     max_count=0;
     max_write=0;
     t0=millis();
   }
+  loop_count++;
 }

@@ -37,9 +37,11 @@ volatile uint32_t acq_miss=0;
 ////        #define I2S_CONFIG 2 // D35,PTC8(4); D36,PTC9(4) D37,PTC10(4); D27,PTA15(6) (MCLK,RX_BCLK,RX_FS,TX_D0)
 //    #endif
 
+
+
     #define MCLK_SRC  3
     // set MCLK to 48 MHz
-    #define BCLK_DIV 3 //((48MHz/93.75kHz)/(2*64)-1) // 64 = 2*32 bit 
+    #define BCLK_DIV 4 //((48MHz/93.75kHz)/(2*64)-1) // 64 = 2*32 bit 
 
     #define MCKL_SCALE 1
     // SCALE 1: 48000/512 kHz = 93.75 kHz
@@ -64,7 +66,29 @@ volatile uint32_t acq_miss=0;
     #endif
 
     const int32_t fsamp0=(((F_PLL*MCLK_MULT)/MCLK_DIV)/512);
-    
+
+    uint32_t I2S_dividers(uint32_t *iscl, uint32_t fsamp, uint32_t nbits) 
+    { 
+        int64_t i1 = 1; 
+        int64_t i2 = 1; 
+        int64_t i3 = iscl[2];
+        int fcpu=F_CPU; 
+        if(F_CPU<=96000000) fcpu=96000000; 
+        float A=fcpu/2.0f/i3/(2.0f*nbits*fsamp); 
+        float mn=1.0;  
+        for(int ii=1;ii<=128;ii++)  
+        {   float xx; 
+            xx=A*ii-(int32_t)(A*ii);  
+            if(xx<mn && A*ii<256.0) { mn=xx; i1=ii; i2=A*ii;} //select first candidate 
+        } 
+        iscl[0] = (int) (i1); 
+        iscl[1] = (int) (i2); 
+        iscl[2] = (int) (i3); 
+
+        return fcpu*i1/i2/(2*i3)/(2*nbits);
+    } 
+
+
     void acq_stopClocks(void)
     {
         SIM_SCGC6 &= ~SIM_SCGC6_DMAMUX;
@@ -102,7 +126,11 @@ volatile uint32_t acq_miss=0;
     }
 
     void acq_init(int fsamp)
-    {
+    {   uint32_t iscl[3]={MCLK_MULT,MCLK_DIV,BCLK_DIV};
+        
+//        Serial.println(I2S_dividers(iscl, fsamp, 32));
+        Serial.printf("%d %d %d\n",iscl[0],iscl[1],iscl[2]); 
+        Serial.printf("%d %d %d\n",MCLK_MULT,MCLK_DIV,BCLK_DIV); 
         Serial.printf("%d %d\n",fsamp,fsamp0);
 
         acq_startClocks();
@@ -125,7 +153,8 @@ volatile uint32_t acq_miss=0;
         #endif
         I2S0_RCSR=0;
 
-        mckl_init(MCLK_SRC, MCLK_MULT, MCLK_DIV);
+//        mckl_init(MCLK_SRC, MCLK_MULT, MCLK_DIV);
+        mckl_init(MCLK_SRC, iscl[0],iscl[1]);
         
 #if 0
         I2S0_RMR=0; // enable receiver mask
@@ -149,7 +178,7 @@ volatile uint32_t acq_miss=0;
 	I2S0_TMR = 0;
 	I2S0_TCR1 = I2S_TCR1_TFW(1);  // watermark at half fifo size
 	I2S0_TCR2 = I2S_TCR2_SYNC(0) | I2S_TCR2_BCP | I2S_TCR2_MSEL(1)
-		| I2S_TCR2_BCD | I2S_TCR2_DIV(BCLK_DIV);
+		| I2S_TCR2_BCD | I2S_TCR2_DIV((iscl[2]-1));
 	I2S0_TCR3 = I2S_TCR3_TCE;
 	I2S0_TCR4 = I2S_TCR4_FRSZ(1) | I2S_TCR4_SYWD(31) | I2S_TCR4_MF
 		| I2S_TCR4_FSE | I2S_TCR4_FSP | I2S_TCR4_FSD;
@@ -159,7 +188,7 @@ volatile uint32_t acq_miss=0;
 	I2S0_RMR = 0;
 	I2S0_RCR1 = I2S_RCR1_RFW(1);
 	I2S0_RCR2 = I2S_RCR2_SYNC(1) | I2S_TCR2_BCP | I2S_RCR2_MSEL(1)
-		| I2S_RCR2_BCD | I2S_RCR2_DIV(BCLK_DIV);
+		| I2S_RCR2_BCD | I2S_RCR2_DIV((iscl[2]-1));
 	I2S0_RCR3 = I2S_RCR3_RCE;
 	I2S0_RCR4 = I2S_RCR4_FRSZ(1) | I2S_RCR4_SYWD(31) | I2S_RCR4_MF
 		| I2S_RCR4_FSE | I2S_RCR4_FSP | I2S_RCR4_FSD;

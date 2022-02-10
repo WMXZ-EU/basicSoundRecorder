@@ -1,5 +1,6 @@
 
 /********************************* Menu ***********************************************/
+#include "config.h"
 #include "filing.h"
 #include "utils.h"
 #include "mTime.h"

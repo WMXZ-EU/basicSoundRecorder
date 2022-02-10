@@ -1,8 +1,11 @@
 #include <stdint.h>
 
+#include "config.h"
 #include "adc.h"
 
 int gain=0;
+uint32_t fsamps[] = FREQS;
+uint32_t fsamp = fsamps[IFR];
 
 #if ADC_MODEL == SGTL5000
     #define CHIP_ID				0x0000
@@ -70,14 +73,15 @@ int gain=0;
     void setAGain(int8_t again) {  }
     void adcStatus(void) {  }
 
-    bool adc_enable(const unsigned extMCLK, const uint32_t pllFreq) 
-    {
+    bool adc_enable(void) 
+    {   const unsigned extMCLK=0;   // slave
+        const uint32_t pllFreq=1;   // pll
         if(!i2c.exist(addr)) Serial.println("No I2C address found");
  
         //Check if we are in Master Mode and if the Teensy had a reset:
         unsigned int n = i2c.read16(addr,CHIP_I2S_CTRL);
-        if ( (extMCLK > 0) && (n == (0x0030 | (1<<7))) ) {
-            //Yes. Do not initialize.
+        if ( (extMCLK > 0) && (n == (0x0030 | (1<<7))) ) 
+        {   //Yes. Do not initialize.
             return true;
         }
 
@@ -89,12 +93,15 @@ int gain=0;
         i2c.write16(addr,CHIP_SHORT_CTRL, 0x4446);  // allow up to 125mA
         i2c.write16(addr,CHIP_ANA_CTRL, 0x0137);  // enable zero cross detectors
             
-        if (extMCLK > 0) {
-            //SGTL is I2S Master
+        if (extMCLK > 0) 
+        {   //SGTL is I2S Master
             //Datasheet Pg. 14: Using the PLL - Asynchronous SYS_MCLK input
-            if (extMCLK > 17000000) {
+            if (extMCLK > 17000000) 
+            {
                 i2c.write16(addr,CHIP_CLK_TOP_CTRL, 1);
-            } else {
+            } 
+            else 
+            {
                 i2c.write16(addr,CHIP_CLK_TOP_CTRL, 0);
             }
 
@@ -103,8 +110,9 @@ int gain=0;
             
             i2c.write16(addr,CHIP_PLL_CTRL, (int_divisor << 11) | frac_divisor);		
             i2c.write16(addr,CHIP_ANA_POWER, 0x40FF | (1<<10) | (1<<8) ); // power up: lineout, hp, adc, dac, PLL_POWERUP, VCOAMP_POWERUP
-        } else {
-            //SGTL is I2S Slave
+        } 
+        else 
+        {   //SGTL is I2S Slave
             i2c.write16(addr,CHIP_ANA_POWER, 0x40FF); // power up: lineout, hp, adc, dac
         }
 
@@ -112,14 +120,17 @@ int gain=0;
         delay(400);
         i2c.write16(addr,CHIP_LINE_OUT_VOL, 0x1D1D); // default approx 1.3 volts peak-to-peak
         
-        if (extMCLK > 0) { 
-            //SGTL is I2S Master
-            i2c.write16(addr,CHIP_CLK_CTRL, 0x0004 | 0x03);  // 44.1 kHz, 256*Fs, use PLL
-            i2c.write16(addr,CHIP_I2S_CTRL, 0x0030 | (1<<7)); // SCLK=64*Fs, 16bit, I2S format
-        } else {
-            //SGTL is I2S Slave
-            i2c.write16(addr,CHIP_CLK_CTRL, 0x0004);  // 44.1 kHz, 256*Fs
-            i2c.write16(addr,CHIP_I2S_CTRL, 0x0030); // SCLK=64*Fs, 16bit, I2S format
+        if (extMCLK > 0) 
+        {   //SGTL is I2S Master
+            i2c.write16(addr,CHIP_CLK_CTRL, 0x0004 | 0x03);     // 44.1 kHz, 256*Fs, use PLL
+            i2c.write16(addr,CHIP_I2S_CTRL, 0x0030 | (1<<7));   // SCLK=64*Fs, 16bit, I2S format
+        }
+        else 
+        {   //SGTL is I2S Slave
+            int fs_mode=IFR;
+            if(fs_mode>3) fs_mode = 3;  // 256*Fs fs_mode = 0:32 kHz; 1:44.1 kHz; 2:48 kHz; 3:96 kHz 
+            i2c.write16(addr,CHIP_CLK_CTRL, fs_mode<<2); 
+            i2c.write16(addr,CHIP_I2S_CTRL,0); // SCLK=64*Fs, 32bit, I2S format
         }
 
         // default signal routing is ok?
@@ -139,7 +150,7 @@ int gain=0;
     void adc_init(void) { }
     void setAGain(int8_t again) {  }
     void adcStatus(void) {  }
-    void adcEnable(void) { }
+    bool adcEnable(void) { }
 
 #elif ADC_MODEL == CS5361 || ADC_MODEL == CS5366 || ADC_MODEL == CS5368
 /******************************* CS5366 ********************************************/
@@ -224,7 +235,7 @@ int gain=0;
 
     void setAGain(int8_t again) {  }
     void adcStatus(void) {  }
-    void adcEnable(void) { }
+    bool adcEnable(void) { }
 
 #elif (ADC_MODEL == TLDV320ADC6140) || (ADC_MODEL == TLDV320ADC6140_2)
 /******************************* TLV320ADC6140 ********************************************/
@@ -422,5 +433,5 @@ int gain=0;
         }
         Serial.println();
     }
-    void adcEnable(void) { }
+    bool adcEnable(void) { }
 #endif

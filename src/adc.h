@@ -11,11 +11,12 @@
 
 #define ADC_MODEL SGTL5000
 
+extern uint32_t fsamp;
 #define ADC_STEREO ((ADC_MODEL == SGTL5000) || (ADC_MODEL == CS5381) || (ADC_MODEL == CS5361))
 
     void adc_init(void);
     void setAGain(int8_t again);
     void adcStatus(void) ;
-    bool adc_enable(const unsigned extMCLK, const uint32_t pllFreq = (4096.0l * 44100l));
+    bool adc_enable(void);
 
 #endif

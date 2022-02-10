@@ -7,36 +7,6 @@
     #include "SdFat.h"
     #include "SPI.h"
 
-    #include "config.h"
-
-    /**
-     * @brief Definitions
-     * 
-     */
-
-    #define MAX_DISK_BUFFER (NDBL*NBUF_ACQ)
-
-    #if defined(ARDUINO_TEENSY36)
-        #define MAXBUF (150)
-    #elif defined(ARDUINO_TEENSY40)
-        #define MAXBUF (200)
-    #elif defined(ARDUINO_TEENSY41)
-        #define MAXBUF (200)
-    #endif
-    
-
-    /**
-     * @brief Constants
-     * 
-     */
-    #if defined(ARDUINO_TEENSY36)
-        const int teensy=36;
-    #elif defined(ARDUINO_TEENSY40)
-        const int teensy=40;
-    #elif defined(ARDUINO_TEENSY41)
-        const int teensy=41;
-    #endif
-
     //-----------------------------------------------------------------------------------------------------
     // interface to circular data buffer
     uint16_t getCount ();

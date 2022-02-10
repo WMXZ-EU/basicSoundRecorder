@@ -11,9 +11,26 @@
  *
  * contains filing interface
  */
+    #include "config.h"
     #include "mTime.h"
     #include "filing.h"
     #include "utils.h"
+    #include "adc.h"
+
+     /**
+     * @brief Definitions
+     * 
+     */
+
+    #if defined(ARDUINO_TEENSY36)
+        #define MAXBUF (160)
+    #elif defined(ARDUINO_TEENSY40)
+        #define MAXBUF (200)
+    #elif defined(ARDUINO_TEENSY41)
+        #define MAXBUF (200)
+    #endif
+    
+
 
     /**
      * @brief Circular Data Buffer
@@ -24,6 +41,8 @@
     #else
         uint32_t data_buffer[MAXBUF*NBUF_ACQ];
     #endif
+
+    #define MAX_DISK_BUFFER (NDBL*NBUF_ACQ)
 
     /**
      * @brief Data storage class
@@ -122,7 +141,7 @@ static int16_t makeHeader(char *header)
     int32_t *iptr = (int32_t *) ptr;
     iptr[0] = 4;                    // SW version
     iptr[1] = (int32_t)SerNum;      // serial number
-    iptr[2] = FSAMP;
+    iptr[2] = fsamp;
     iptr[3] = NCHAN_ACQ;
     iptr[4] = t_acq;
     iptr[5] = 0;

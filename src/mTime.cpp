@@ -1,3 +1,4 @@
+#include "config.h"
 #include "mTime.h"
 
 int32_t day_   = 0;

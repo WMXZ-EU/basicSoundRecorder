@@ -1,5 +1,6 @@
-#include "utils.h"
 #include "core_pins.h"
+#include "config.h"
+#include "utils.h"
 
 uint32_t SerNum;
 
