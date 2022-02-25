@@ -41,8 +41,8 @@
         #error "In SdFatConfig.h set D_CHIP_SELECT_MODE to 1"
     #endif
 
-    #if   MAINTAIN_FREE_CLUSTER_COUNT != 1
-        #error "In SdFatConfig.h set MAINTAIN_FREE_CLUSTER_COUNT to 1"
+    #if USE_LONG_FILE_NAMES != 1
+        #error "In SdFatConfig.h set USE_LONG_FILE_NAMES to 1"
     #endif
 
     #if MAINTAIN_FREE_CLUSTER_COUNT != 1
