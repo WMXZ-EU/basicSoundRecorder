@@ -5,6 +5,8 @@
 #include "acq.h"
 #include "adc.h"
 
+#define I2S_MASTER 0
+
 /********************************************************************************/
 #include "DMAChannel.h"
 static DMAChannel dma;
@@ -26,199 +28,302 @@ volatile uint32_t acq_miss=0;
 #if defined(ARDUINO_TEENSY32) || defined(ARDUINO_TEENSY36)
 
     #define IMXRT_CACHE_ENABLED 0
-//------------------------------------- I2S -------------------------------------
+    //------------------------------------- I2S -------------------------------------
 
-//WMXZ hardware specific defines
-//    #if ADC_MODEL == CS5366
-//        #define CH6
-//        #define I2S_CONFIG 1 // D39, D11, D12, D13 (MCLK,RX_BCLK,RX_FS,RX_D0)
-//    #else
-//        #define CH8
-////        #define I2S_CONFIG 2 // D35,PTC8(4); D36,PTC9(4) D37,PTC10(4); D27,PTA15(6) (MCLK,RX_BCLK,RX_FS,TX_D0)
-//    #endif
+    #if I2S_MASTER==1
+        #define MCLK_SRC  3
+        // set MCLK to 48 MHz
+        #define BCLK_DIV 4 //((48MHz/93.75kHz)/(2*64)-1) // 64 = 2*32 bit 
 
+        #define MCKL_SCALE 1
+        // SCALE 1: 48000/512 kHz = 93.75 kHz
+        #if (F_PLL == 96000000) //PLL is 96 MHz for F_CPU==48 or F_CPU==96 MHz
+            #define MCLK_MULT 1 
+            #define MCLK_DIV  (2*MCKL_SCALE) 
+            //  #define MCLK_DIV  (3*MCKL_SCALE) 
+        #elif F_PLL == 120000000
+            #define MCLK_MULT 2
+            #define MCLK_DIV  (5*MCKL_SCALE)
+        #elif F_PLL == 144000000
+            #define MCLK_MULT 1
+            #define MCLK_DIV  (3*MCKL_SCALE)
+        #elif F_PLL == 192000000
+            #define MCLK_MULT 1
+            #define MCLK_DIV  (4*MCKL_SCALE)
+        #elif F_PLL == 240000000
+            #define MCLK_MULT 1
+            #define MCLK_DIV  (5*MCKL_SCALE)
+        #else
+            #error "set F_CPU to (48, 96, 120, 144, 192, 240) MHz"
+        #endif
 
+        const int32_t fsamp0=(((F_PLL*MCLK_MULT)/MCLK_DIV)/512);
 
-    #define MCLK_SRC  3
-    // set MCLK to 48 MHz
-    #define BCLK_DIV 4 //((48MHz/93.75kHz)/(2*64)-1) // 64 = 2*32 bit 
+        uint32_t I2S_dividers(uint32_t *iscl, uint32_t fsamp, uint32_t nbits) 
+        { 
+            int64_t i1 = 1; 
+            int64_t i2 = 1; 
+            int64_t i3 = iscl[2];
+            int fcpu=F_CPU; 
+            if(F_CPU<=96000000) fcpu=96000000; 
+            float A=fcpu/2.0f/i3/(2.0f*nbits*fsamp); 
+            float mn=1.0;  
+            for(int ii=1;ii<=128;ii++)  
+            {   float xx; 
+                xx=A*ii-(int32_t)(A*ii);  
+                if(xx<mn && A*ii<256.0) { mn=xx; i1=ii; i2=A*ii;} //select first candidate 
+            } 
+            iscl[0] = (int) (i1); 
+            iscl[1] = (int) (i2); 
+            iscl[2] = (int) (i3); 
 
-    #define MCKL_SCALE 1
-    // SCALE 1: 48000/512 kHz = 93.75 kHz
-    #if (F_PLL == 96000000) //PLL is 96 MHz for F_CPU==48 or F_CPU==96 MHz
-        #define MCLK_MULT 1 
-        #define MCLK_DIV  (2*MCKL_SCALE) 
-        //  #define MCLK_DIV  (3*MCKL_SCALE) 
-    #elif F_PLL == 120000000
-        #define MCLK_MULT 2
-        #define MCLK_DIV  (5*MCKL_SCALE)
-    #elif F_PLL == 144000000
-        #define MCLK_MULT 1
-        #define MCLK_DIV  (3*MCKL_SCALE)
-    #elif F_PLL == 192000000
-        #define MCLK_MULT 1
-        #define MCLK_DIV  (4*MCKL_SCALE)
-    #elif F_PLL == 240000000
-        #define MCLK_MULT 1
-        #define MCLK_DIV  (5*MCKL_SCALE)
-    #else
-        #error "set F_CPU to (48, 96, 120, 144, 192, 240) MHz"
-    #endif
-
-    const int32_t fsamp0=(((F_PLL*MCLK_MULT)/MCLK_DIV)/512);
-
-    uint32_t I2S_dividers(uint32_t *iscl, uint32_t fsamp, uint32_t nbits) 
-    { 
-        int64_t i1 = 1; 
-        int64_t i2 = 1; 
-        int64_t i3 = iscl[2];
-        int fcpu=F_CPU; 
-        if(F_CPU<=96000000) fcpu=96000000; 
-        float A=fcpu/2.0f/i3/(2.0f*nbits*fsamp); 
-        float mn=1.0;  
-        for(int ii=1;ii<=128;ii++)  
-        {   float xx; 
-            xx=A*ii-(int32_t)(A*ii);  
-            if(xx<mn && A*ii<256.0) { mn=xx; i1=ii; i2=A*ii;} //select first candidate 
+            return fcpu*i1/i2/(2*i3)/(2*nbits);
         } 
-        iscl[0] = (int) (i1); 
-        iscl[1] = (int) (i2); 
-        iscl[2] = (int) (i3); 
 
-        return fcpu*i1/i2/(2*i3)/(2*nbits);
-    } 
+        void acq_stopClocks(void)
+        {
+            SIM_SCGC6 &= ~SIM_SCGC6_DMAMUX;
+            SIM_SCGC7 &= ~SIM_SCGC7_DMA;
+            SIM_SCGC6 &= ~SIM_SCGC6_I2S;
+        }
 
-
-    void acq_stopClocks(void)
-    {
-        SIM_SCGC6 &= ~SIM_SCGC6_DMAMUX;
-        SIM_SCGC7 &= ~SIM_SCGC7_DMA;
-        SIM_SCGC6 &= ~SIM_SCGC6_I2S;
-    }
-
-    void acq_startClocks(void)
-    {
-    SIM_SCGC6 |= SIM_SCGC6_I2S;
-    SIM_SCGC7 |= SIM_SCGC7_DMA;
-    SIM_SCGC6 |= SIM_SCGC6_DMAMUX;
-    }
-
-    void acq_start(void)
-    {
-        acq_startClocks();
-        I2S0_RCSR |= (I2S_RCSR_RE | I2S_RCSR_BCE);
-    }
-
-    void acq_stop(void)
-    {
-        I2S0_RCSR &= ~(I2S_RCSR_RE | I2S_RCSR_BCE);
-        acq_stopClocks();
-    }
-
-    void mckl_init(int src, int mult, int div)
-    {
+        void acq_startClocks(void)
+        {
         SIM_SCGC6 |= SIM_SCGC6_I2S;
-        // enable MCLK output
-        I2S0_MDR = I2S_MDR_FRACT((mult-1)) | I2S_MDR_DIVIDE((div-1));
-        while(I2S0_MCR & I2S_MCR_DUF);
-        I2S0_MCR = I2S_MCR_MICS(src) | I2S_MCR_MOE;
+        SIM_SCGC7 |= SIM_SCGC7_DMA;
+        SIM_SCGC6 |= SIM_SCGC6_DMAMUX;
+        }
 
-    }
+        void acq_start(void)
+        {
+            acq_startClocks();
+            I2S0_RCSR |= (I2S_RCSR_RE | I2S_RCSR_BCE);
+        }
 
-    void acq_init(int fsamp)
-    {   uint32_t iscl[3]={MCLK_MULT,MCLK_DIV,BCLK_DIV};
-        
-//        Serial.println(I2S_dividers(iscl, fsamp, 32));
-        Serial.printf("%d %d %d\n",iscl[0],iscl[1],iscl[2]); 
-        Serial.printf("%d %d %d\n",MCLK_MULT,MCLK_DIV,BCLK_DIV); 
-        Serial.printf("%d %d\n",fsamp,fsamp0);
+        void acq_stop(void)
+        {
+            I2S0_RCSR &= ~(I2S_RCSR_RE | I2S_RCSR_BCE);
+            acq_stopClocks();
+        }
 
-        acq_startClocks();
+        void mckl_init(int src, int mult, int div)
+        {
+            SIM_SCGC6 |= SIM_SCGC6_I2S;
+            // enable MCLK output
+            I2S0_MDR = I2S_MDR_FRACT((mult-1)) | I2S_MDR_DIVIDE((div-1));
+            while(I2S0_MCR & I2S_MCR_DUF);
+            I2S0_MCR = I2S_MCR_MICS(src) | I2S_MCR_MOE;
 
-        #if I2S_CONFIG==0
-            CORE_PIN11_CONFIG = PORT_PCR_MUX(6); // pin 11, PTC6, I2S0_MCLK
-        	CORE_PIN9_CONFIG  = PORT_PCR_MUX(6); // pin  9, PTC3, I2S0_TX_BCLK
-            CORE_PIN23_CONFIG = PORT_PCR_MUX(6); // pin 23, PTC2, I2S0_TX_FS (LRCLK)
-            CORE_PIN13_CONFIG = PORT_PCR_MUX(4);  //pin 13, PTC5,  I2S0_RXD0
-        #elif I2S_CONFIG==1
-            CORE_PIN39_CONFIG = PORT_PCR_MUX(6);  //pin39, PTA17, I2S0_MCLK
-            CORE_PIN11_CONFIG = PORT_PCR_MUX(4);  //pin11, PTC6,  I2S0_RX_BCLK
-            CORE_PIN12_CONFIG = PORT_PCR_MUX(4);  //pin12, PTC7,  I2S0_RX_FS 
-            CORE_PIN13_CONFIG = PORT_PCR_MUX(4);  //pin13, PTC5,  I2S0_RXD0
-        #elif I2S_CONFIG==2
-            CORE_PIN35_CONFIG = PORT_PCR_MUX(4) | PORT_PCR_SRE | PORT_PCR_DSE;  //pin35, PTC8,   I2S0_MCLK (SLEW rate (SRE)?)
-            CORE_PIN36_CONFIG = PORT_PCR_MUX(4);  //pin36, PTC9,   I2S0_RX_BCLK
-            CORE_PIN37_CONFIG = PORT_PCR_MUX(4);  //pin37, PTC10,  I2S0_RX_FS
-            CORE_PIN27_CONFIG = PORT_PCR_MUX(6);  //pin27, PTA15,  I2S0_RXD0
-        #endif
-        I2S0_RCSR=0;
+        }
 
-//        mckl_init(MCLK_SRC, MCLK_MULT, MCLK_DIV);
-        mckl_init(MCLK_SRC, iscl[0],iscl[1]);
-        
-#if 0
-        I2S0_RMR=0; // enable receiver mask
-        I2S0_RCR1 = I2S_RCR1_RFW(3); 
+        void acq_init(int fsamp)
+        {   uint32_t iscl[3]={MCLK_MULT,MCLK_DIV,BCLK_DIV};
+            
+    //        Serial.println(I2S_dividers(iscl, fsamp, 32));
+            Serial.printf("%d %d %d\n",iscl[0],iscl[1],iscl[2]); 
+            Serial.printf("%d %d %d\n",MCLK_MULT,MCLK_DIV,BCLK_DIV); 
+            Serial.printf("%d %d\n",fsamp,fsamp0);
 
-        I2S0_RCR2 = I2S_RCR2_SYNC(0) 
-                    | I2S_RCR2_BCP ;
-                    
-        I2S0_RCR3 = I2S_RCR3_RCE; // single rx channel
+            acq_startClocks();
 
-        I2S0_RCR4 = I2S_RCR4_FRSZ((NCHAN_I2S-1)) // 8 words (TDM - mode)
-                    | I2S_RCR4_FSE  // frame sync early
-                    | I2S_RCR4_MF;
-        #if ADC_STEREO
-            I2S0_RCR4 |=  I2S_RCR4_SYWD(31);
-        #endif
-        
+            #if I2S_CONFIG==0
+                CORE_PIN11_CONFIG = PORT_PCR_MUX(6); // pin 11, PTC6, I2S0_MCLK
+                CORE_PIN9_CONFIG  = PORT_PCR_MUX(6); // pin  9, PTC3, I2S0_TX_BCLK
+                CORE_PIN23_CONFIG = PORT_PCR_MUX(6); // pin 23, PTC2, I2S0_TX_FS (LRCLK)
+                CORE_PIN13_CONFIG = PORT_PCR_MUX(4);  //pin 13, PTC5,  I2S0_RXD0
+            #elif I2S_CONFIG==1
+                CORE_PIN39_CONFIG = PORT_PCR_MUX(6);  //pin39, PTA17, I2S0_MCLK
+                CORE_PIN11_CONFIG = PORT_PCR_MUX(4);  //pin11, PTC6,  I2S0_RX_BCLK
+                CORE_PIN12_CONFIG = PORT_PCR_MUX(4);  //pin12, PTC7,  I2S0_RX_FS 
+                CORE_PIN13_CONFIG = PORT_PCR_MUX(4);  //pin13, PTC5,  I2S0_RXD0
+            #elif I2S_CONFIG==2
+                CORE_PIN35_CONFIG = PORT_PCR_MUX(4) | PORT_PCR_SRE | PORT_PCR_DSE;  //pin35, PTC8,   I2S0_MCLK (SLEW rate (SRE)?)
+                CORE_PIN36_CONFIG = PORT_PCR_MUX(4);  //pin36, PTC9,   I2S0_RX_BCLK
+                CORE_PIN37_CONFIG = PORT_PCR_MUX(4);  //pin37, PTC10,  I2S0_RX_FS
+                CORE_PIN27_CONFIG = PORT_PCR_MUX(6);  //pin27, PTA15,  I2S0_RXD0
+            #endif
+            I2S0_RCSR=0;
+
+    //        mckl_init(MCLK_SRC, MCLK_MULT, MCLK_DIV);
+            mckl_init(MCLK_SRC, iscl[0],iscl[1]);
+            
+    #if 0
+            I2S0_RMR=0; // enable receiver mask
+            I2S0_RCR1 = I2S_RCR1_RFW(3); 
+
+            I2S0_RCR2 = I2S_RCR2_SYNC(0) 
+                        | I2S_RCR2_BCP ;
+                        
+            I2S0_RCR3 = I2S_RCR3_RCE; // single rx channel
+
+            I2S0_RCR4 = I2S_RCR4_FRSZ((NCHAN_I2S-1)) // 8 words (TDM - mode)
+                        | I2S_RCR4_FSE  // frame sync early
+                        | I2S_RCR4_MF;
+            #if ADC_STEREO
+                I2S0_RCR4 |=  I2S_RCR4_SYWD(31);
+            #endif
+            
+            I2S0_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
+    #else // I2S_MASTER
+        // configure transmitter
+        I2S0_TMR = 0;
+        I2S0_TCR1 = I2S_TCR1_TFW(1);  // watermark at half fifo size
+        I2S0_TCR2 = I2S_TCR2_SYNC(0) | I2S_TCR2_BCP | I2S_TCR2_MSEL(1)
+            | I2S_TCR2_BCD | I2S_TCR2_DIV((iscl[2]-1));
+        I2S0_TCR3 = I2S_TCR3_TCE;
+        I2S0_TCR4 = I2S_TCR4_FRSZ(1) | I2S_TCR4_SYWD(31) | I2S_TCR4_MF
+            | I2S_TCR4_FSE | I2S_TCR4_FSP | I2S_TCR4_FSD;
+        I2S0_TCR5 = I2S_TCR5_WNW(31) | I2S_TCR5_W0W(31) | I2S_TCR5_FBT(31);
+
+        // configure receiver (sync'd to transmitter clocks)
+        I2S0_RMR = 0;
+        I2S0_RCR1 = I2S_RCR1_RFW(1);
+        I2S0_RCR2 = I2S_RCR2_SYNC(1) | I2S_TCR2_BCP | I2S_RCR2_MSEL(1)
+            | I2S_RCR2_BCD | I2S_RCR2_DIV((iscl[2]-1));
+        I2S0_RCR3 = I2S_RCR3_RCE;
+        I2S0_RCR4 = I2S_RCR4_FRSZ(1) | I2S_RCR4_SYWD(31) | I2S_RCR4_MF
+            | I2S_RCR4_FSE | I2S_RCR4_FSP | I2S_RCR4_FSD;
         I2S0_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
-#else
-	// configure transmitter
-	I2S0_TMR = 0;
-	I2S0_TCR1 = I2S_TCR1_TFW(1);  // watermark at half fifo size
-	I2S0_TCR2 = I2S_TCR2_SYNC(0) | I2S_TCR2_BCP | I2S_TCR2_MSEL(1)
-		| I2S_TCR2_BCD | I2S_TCR2_DIV((iscl[2]-1));
-	I2S0_TCR3 = I2S_TCR3_TCE;
-	I2S0_TCR4 = I2S_TCR4_FRSZ(1) | I2S_TCR4_SYWD(31) | I2S_TCR4_MF
-		| I2S_TCR4_FSE | I2S_TCR4_FSP | I2S_TCR4_FSD;
-	I2S0_TCR5 = I2S_TCR5_WNW(31) | I2S_TCR5_W0W(31) | I2S_TCR5_FBT(31);
 
-	// configure receiver (sync'd to transmitter clocks)
-	I2S0_RMR = 0;
-	I2S0_RCR1 = I2S_RCR1_RFW(1);
-	I2S0_RCR2 = I2S_RCR2_SYNC(1) | I2S_TCR2_BCP | I2S_RCR2_MSEL(1)
-		| I2S_RCR2_BCD | I2S_RCR2_DIV((iscl[2]-1));
-	I2S0_RCR3 = I2S_RCR3_RCE;
-	I2S0_RCR4 = I2S_RCR4_FRSZ(1) | I2S_RCR4_SYWD(31) | I2S_RCR4_MF
-		| I2S_RCR4_FSE | I2S_RCR4_FSP | I2S_RCR4_FSD;
-	I2S0_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
+        I2S0_TCSR = I2S_TCSR_SR;
+        I2S0_TCSR = I2S_TCSR_TE | I2S_TCSR_BCE | I2S_TCSR_FRDE;
 
-	I2S0_TCSR = I2S_TCSR_SR;
-	I2S0_TCSR = I2S_TCSR_TE | I2S_TCSR_BCE | I2S_TCSR_FRDE;
+    #endif
+    // configuration of DMA
+            dma.TCD->SADDR = &I2S0_RDR0;
+            dma.TCD->SOFF = 0;
+            dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
+            dma.TCD->NBYTES_MLOFFNO = 4;
+            dma.TCD->SLAST = 0;
+            dma.TCD->DADDR = tdm_rx_buffer;
+            dma.TCD->DOFF = 4;
+            dma.TCD->CITER_ELINKNO = 2*NBUF_I2S;
+            dma.TCD->DLASTSGA = -sizeof(tdm_rx_buffer);
+            dma.TCD->BITER_ELINKNO = 2*NBUF_I2S;
+            dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
+            //
+            dma.triggerAtHardwareEvent(DMAMUX_SOURCE_I2S0_RX);
+            NVIC_SET_PRIORITY(DMAMUX_SOURCE_I2S0_RX,I2S_SAI_PRIO);
+            //
+            I2S0_RCSR =  I2S_RCSR_FRDE | I2S_RCSR_FR;
+            dma.attachInterrupt(acq_isr, I2S_DMA_PRIO);	
+            //
+            dma.enable();        
+        }
+    #else // I2S_SLAVE
+        void acq_stopClocks(void)
+        {
+            SIM_SCGC6 &= ~SIM_SCGC6_DMAMUX;
+            SIM_SCGC7 &= ~SIM_SCGC7_DMA;
+            SIM_SCGC6 &= ~SIM_SCGC6_I2S;
+        }
 
-#endif
-// configuration of DMA
-        dma.TCD->SADDR = &I2S0_RDR0;
-        dma.TCD->SOFF = 0;
-        dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
-	    dma.TCD->NBYTES_MLOFFNO = 4;
-        dma.TCD->SLAST = 0;
-        dma.TCD->DADDR = tdm_rx_buffer;
-        dma.TCD->DOFF = 4;
-        dma.TCD->CITER_ELINKNO = 2*NBUF_I2S;
-        dma.TCD->DLASTSGA = -sizeof(tdm_rx_buffer);
-        dma.TCD->BITER_ELINKNO = 2*NBUF_I2S;
-        dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
-        //
-        dma.triggerAtHardwareEvent(DMAMUX_SOURCE_I2S0_RX);
-        NVIC_SET_PRIORITY(DMAMUX_SOURCE_I2S0_RX,I2S_SAI_PRIO);
-        //
-        I2S0_RCSR =  I2S_RCSR_FRDE | I2S_RCSR_FR;
-        dma.attachInterrupt(acq_isr, I2S_DMA_PRIO);	
-        //
-        dma.enable();        
-    }
+        void acq_startClocks(void)
+        {
+        SIM_SCGC6 |= SIM_SCGC6_I2S;
+        SIM_SCGC7 |= SIM_SCGC7_DMA;
+        SIM_SCGC6 |= SIM_SCGC6_DMAMUX;
+        }
+
+        void acq_start(void)
+        {
+            acq_startClocks();
+            I2S0_RCSR |= I2S_RCSR_RE;
+        }
+
+        void acq_stop(void)
+        {
+            I2S0_RCSR &= ~I2S_RCSR_RE;
+            acq_stopClocks();
+        }
+
+        void acq_init(int fsamp)
+        {   
+            acq_startClocks();
+
+            #if I2S_CONFIG==0
+                CORE_PIN11_CONFIG = PORT_PCR_MUX(6); // pin 11, PTC6, I2S0_MCLK
+                CORE_PIN9_CONFIG  = PORT_PCR_MUX(6); // pin  9, PTC3, I2S0_TX_BCLK
+                CORE_PIN23_CONFIG = PORT_PCR_MUX(6); // pin 23, PTC2, I2S0_TX_FS (LRCLK)
+                CORE_PIN13_CONFIG = PORT_PCR_MUX(4);  //pin 13, PTC5,  I2S0_RXD0
+            #elif I2S_CONFIG==1
+                CORE_PIN39_CONFIG = PORT_PCR_MUX(6);  //pin39, PTA17, I2S0_MCLK
+                CORE_PIN11_CONFIG = PORT_PCR_MUX(4);  //pin11, PTC6,  I2S0_RX_BCLK
+                CORE_PIN12_CONFIG = PORT_PCR_MUX(4);  //pin12, PTC7,  I2S0_RX_FS 
+                CORE_PIN13_CONFIG = PORT_PCR_MUX(4);  //pin13, PTC5,  I2S0_RXD0
+            #elif I2S_CONFIG==2
+                CORE_PIN35_CONFIG = PORT_PCR_MUX(4) | PORT_PCR_SRE | PORT_PCR_DSE;  //pin35, PTC8,   I2S0_MCLK (SLEW rate (SRE)?)
+                CORE_PIN36_CONFIG = PORT_PCR_MUX(4);  //pin36, PTC9,   I2S0_RX_BCLK
+                CORE_PIN37_CONFIG = PORT_PCR_MUX(4);  //pin37, PTC10,  I2S0_RX_FS
+                CORE_PIN27_CONFIG = PORT_PCR_MUX(6);  //pin27, PTA15,  I2S0_RXD0
+            #endif
+            I2S0_RCSR=0;
+
+    #if 1 // I2S_SLAVE
+            I2S0_RMR=0; // enable receiver mask
+            I2S0_RCR1 = I2S_RCR1_RFW(3); 
+
+            I2S0_RCR2 = I2S_RCR2_SYNC(0) 
+                        | I2S_RCR2_BCP ;
+                        
+            I2S0_RCR3 = I2S_RCR3_RCE; // single rx channel
+
+            I2S0_RCR4 = I2S_RCR4_FRSZ((NCHAN_I2S-1)) 
+                        | I2S_RCR4_FSE  // frame sync early
+                        | I2S_RCR4_MF;
+            #if ADC_STEREO
+                I2S0_RCR4 |=  I2S_RCR4_SYWD(31);
+            #endif
+            
+            I2S0_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
+    #else
+        // configure transmitter
+        I2S0_TMR = 0;
+        I2S0_TCR1 = I2S_TCR1_TFW(1);  // watermark at half fifo size
+        I2S0_TCR2 = I2S_TCR2_SYNC(0) | I2S_TCR2_BCP | I2S_TCR2_MSEL(1)
+            | I2S_TCR2_BCD | I2S_TCR2_DIV((iscl[2]-1));
+        I2S0_TCR3 = I2S_TCR3_TCE;
+        I2S0_TCR4 = I2S_TCR4_FRSZ(1) | I2S_TCR4_SYWD(31) | I2S_TCR4_MF
+            | I2S_TCR4_FSE | I2S_TCR4_FSP | I2S_TCR4_FSD;
+        I2S0_TCR5 = I2S_TCR5_WNW(31) | I2S_TCR5_W0W(31) | I2S_TCR5_FBT(31);
+
+        // configure receiver (sync'd to transmitter clocks)
+        I2S0_RMR = 0;
+        I2S0_RCR1 = I2S_RCR1_RFW(1);
+        I2S0_RCR2 = I2S_RCR2_SYNC(1) | I2S_TCR2_BCP | I2S_RCR2_MSEL(1)
+            | I2S_RCR2_BCD | I2S_RCR2_DIV((iscl[2]-1));
+        I2S0_RCR3 = I2S_RCR3_RCE;
+        I2S0_RCR4 = I2S_RCR4_FRSZ(1) | I2S_RCR4_SYWD(31) | I2S_RCR4_MF
+            | I2S_RCR4_FSE | I2S_RCR4_FSP | I2S_RCR4_FSD;
+        I2S0_RCR5 = I2S_RCR5_WNW(31) | I2S_RCR5_W0W(31) | I2S_RCR5_FBT(31);
+
+        I2S0_TCSR = I2S_TCSR_SR;
+        I2S0_TCSR = I2S_TCSR_TE | I2S_TCSR_BCE | I2S_TCSR_FRDE;
+
+    #endif
+    // configuration of DMA
+            dma.TCD->SADDR = &I2S0_RDR0;
+            dma.TCD->SOFF = 0;
+            dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(2) | DMA_TCD_ATTR_DSIZE(2);
+            dma.TCD->NBYTES_MLOFFNO = 4;
+            dma.TCD->SLAST = 0;
+            dma.TCD->DADDR = tdm_rx_buffer;
+            dma.TCD->DOFF = 4;
+            dma.TCD->CITER_ELINKNO = 2*NBUF_I2S;
+            dma.TCD->DLASTSGA = -sizeof(tdm_rx_buffer);
+            dma.TCD->BITER_ELINKNO = 2*NBUF_I2S;
+            dma.TCD->CSR = DMA_TCD_CSR_INTHALF | DMA_TCD_CSR_INTMAJOR;
+            //
+            dma.triggerAtHardwareEvent(DMAMUX_SOURCE_I2S0_RX);
+            NVIC_SET_PRIORITY(DMAMUX_SOURCE_I2S0_RX,I2S_SAI_PRIO);
+            //
+            I2S0_RCSR =  I2S_RCSR_FRDE | I2S_RCSR_FR;
+            dma.attachInterrupt(acq_isr, I2S_DMA_PRIO);	
+            //
+            dma.enable();        
+        }
+
+    #endif
 
 #elif defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41)
 
